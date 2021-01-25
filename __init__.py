@@ -28,17 +28,59 @@ bl_info = {
         "wiki_url":"",
         "category": "System"
         }
-
 import bpy
 
-_area_type_enums = [
-    _.identifier for _ in bpy.types.Area.bl_rna.properties["type"].enum_items]
+_t = bpy.types
+map_ui_type_to_header = {
+    "CLIP_EDITOR":_t.CLIP_HT_header,
+    "CONSOLE":_t.CONSOLE_HT_header,
+    "CompositorNodeTree":_t.NODE_HT_header,
+    "DOPESHEET":_t.DOPESHEET_HT_header,
+    "DRIVERS":_t.GRAPH_HT_header,
+    "FCURVES":_t.GRAPH_HT_header,
+    "FILE_BROWSER":_t.FILEBROWSER_HT_header,
+    "IMAGE_EDITOR":_t.IMAGE_HT_header,
+    "INFO":_t.INFO_HT_header,
+    "NLA_EDITOR":_t.NLA_HT_header,
+    "OUTLINER":_t.OUTLINER_HT_header,
+    "PROPERTIES":_t.PROPERTIES_HT_header,
+    "SEQUENCE_EDITOR":_t.SEQUENCER_HT_header,
+    "ShaderNodeTree":_t.NODE_HT_header,
+    "TEXT_EDITOR":_t.TEXT_HT_header,
+    "TIMELINE":_t.DOPESHEET_HT_header,
+    "TextureNodeTree":_t.NODE_HT_header,
+    "UV":_t.IMAGE_HT_header,
+    "VIEW_3D":_t.VIEW3D_HT_header
+}
+ui_type_enums = [
+    "CLIP_EDITOR",
+    "CONSOLE",
+    "CompositorNodeTree",
+    "DOPESHEET",
+    "DRIVERS",
+    "FCURVES",
+    "FILE_BROWSER",
+    "IMAGE_EDITOR",
+    "INFO",
+    "INFO",
+    "NLA_EDITOR",
+    "OUTLINER",
+    "PREFERENCES"
+    "PROPERTIES",
+    "SEQUENCE_EDITOR",
+    "ShaderNodeTree",
+    "TEXT_EDITOR",
+    "TIMELINE",
+    "TextureNodeTree",
+    "UV",
+    "VIEW_3D",
+]
 
 class AREATYPE_OT_split(bpy.types.Operator):
     bl_idname = "areatype.splitview"
     bl_label = "areatype.splitview"
     splittype: bpy.props.EnumProperty(
-        items=[(_,_,_) for _ in _area_type_enums],
+        items=[(_,_,_) for _ in ui_type_enums],
         default="IMAGE_EDITOR")
     direction: bpy.props.EnumProperty(
         items=[(_,_,_) for _ in ("HORIZONTAL","VERTICAL")],
@@ -48,25 +90,26 @@ class AREATYPE_OT_split(bpy.types.Operator):
         return self.execute(context)
     def execute(self,context):
         area1 = context.area
+        sortx = lambda _:_.x
+        sorty = lambda _:_.x
+        above_on_x_same_on_y = lambda _:_.x > area1.x and _.y == area1.y
+        above_on_y_same_on_x = lambda _:_.y > area1.y and _.x == area1.x
         if self.direction == "VERTICAL":
-            key = lambda _:_.x
-            filt = lambda _:_.x > area1.x and _.y == area1.y
+            key = sortx
+            filt = above_on_x_same_on_y
         else:
-            key = lambda _:_.y
-            filt = lambda _:_.y > area1.y and _.x == area1.x
-
+            key = sorty
+            filt = above_on_y_same_on_x
         sibs_ds = list(sorted(filter(filt,context.screen.areas),key=key))
-
-        _type = area1.type
+        _type = area1.ui_type
         if not sibs_ds:
-            area1.type = self.splittype
+            area1.ui_type = self.splittype
             bpy.ops.screen.area_split(direction=self.direction)
             area2 = context.screen.areas[-1]
-            area2.type = _type
+            area2.ui_type = _type
         else:
-            # need better method to find area2
             area2 = sibs_ds[0]
-            area2.type = _type
+            area2.ui_type = _type
             if self.direction == "VERTICAL":
                 c = (area2.x,area1.height)
             else:
@@ -80,54 +123,48 @@ class AREATYPE_OT_split(bpy.types.Operator):
 class AreaTypeSplitPrefs(bpy.types.AddonPreferences):
     bl_idname = __package__
     config_string: bpy.props.StringProperty(
-        description="comma-separated list of pipe-separated area-type pairs",
+        description="comma-separated list of pipe-separated area-uitype pairs",
         default=("VIEW_3D|IMAGE_EDITOR,"
+                 "IMAGE_EDITOR|UV,"
+                 "ShaderNodeTree|UV,"
+                 "PROPERTIES|OUTLINER,"
+                 "TIMELINE|DOPESHEET,"
+                 "FCURVES|DRIVERS,"
                  "CONSOLE|TEXT_EDITOR,"
+                 "INFO|CONSOLE,"
                  "SEQUENCE_EDITOR|SEQUENCE_EDITOR"))
     @property
     def config_pairs(self):
         yield from [p.split("|") for p in self.config_string.split(",")]
-        
-
     def draw(self,context):
         self.layout.prop(self,"config_string")
         for a,b in self.config_pairs:
             row = self.layout.row()
             row.label(text=a)
             row.label(text=b,icon="TRIA_RIGHT")
-        
 
-fs = []
+headerdrawfuncs = []
 def register():
-    fs.clear()
+    headerdrawfuncs.clear()
     bpy.utils.register_class(AREATYPE_OT_split)
     bpy.utils.register_class(AreaTypeSplitPrefs)
     prefs = bpy.context.preferences.addons[__package__].preferences
     P = list(prefs.config_pairs)
-    _t = bpy.types
-    at2ht_map = {
-        "VIEW_3D":_t.VIEW3D_HT_header,
-        "CLIP_EDITOR":_t.CLIP_HT_header,
-        "CONSOLE":_t.CONSOLE_HT_header,
-        "NODE_EDITOR":_t.NODE_HT_header,
-        "GRAPH_EDITOR":_t.GRAPH_HT_header,
-        "IMAGE_EDITOR":_t.IMAGE_HT_header,
-        "OUTLINER":_t.OUTLINER_HT_header,
-        "SEQUENCE_EDITOR":_t.SEQUENCER_HT_header,
-        "NLA_EDITOR":_t.NLA_HT_header,
-    }
 
     for fromarea,toarea in P:
-        ht = at2ht_map.get(fromarea,None)
+        ht = map_ui_type_to_header.get(fromarea,None)
         if ht:
             def f(self,context,toarea=toarea):
                 op = self.layout.operator("areatype.splitview",text="",icon="BLANK1")
                 op.splittype = toarea
             ht.prepend(f)
-            fs.append((ht,f))
+            headerdrawfuncs.append((ht,f))
 
 
 def unregister():
+    for header,func in headerdrawfuncs:
+        header.remove(func)
+
     bpy.utils.unregister_class(AREATYPE_OT_split)
     bpy.utils.unregister_class(AreaTypeSplitPrefs)
 
